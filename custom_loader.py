@@ -9,11 +9,15 @@ from glob import glob
 
 rng = default_rng()
 dir_dataset = "/home/mauricio/dados/Mauricio/OCT2017"
-
+    
 def _measureTime(func, *args):
-        start = time()i
-        func(*args)
-        return time()-start
+	start = time()
+	func(*args)
+	return time()-start
 
 def getFileName(directory):
-        return np.array([file_path.split for file_path in glob(directory+"/*.jpeg")])
+	return np.array([file_path.split for file_path in glob(directory+"/*.jpeg")])
+
+def getImageLabel(file_name):
+	pass
+    
