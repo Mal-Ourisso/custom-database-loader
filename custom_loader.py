@@ -3,33 +3,51 @@ import numpy as np
 import tensorflow as tf
 import keras as kr
 
-from numpy.random import default_rng
+from random import shuffle
 from time import time
 from glob import glob
 
-rng = default_rng()
-
-def _measureTime(func, *args):
-	start = time()
-	func(*args)
-	return time()-start
-
 def getFilePaths(directory):
-	return np.array([file_path for file_path in glob(directory+"/*/*.jpeg")])
+	return [file_path for file_path in glob(directory+"/*/*.jpeg")]
 
-def getImageLabel(file_path, h=512, w=512):
+def getLabelsNames(directory):
+	return [dir_name.split("/")[-1] for dir_name in glob(directory+"/*")] 
+
+def getImageLabel(file_path, label_names, h, w, resize):
 	img = tf.io.decode_jpeg(tf.io.read_file(file_path), channels=3)
-	x = tf.image.resize_with_pad(img, h, w)
-	y = file_path.split("/")[-2]
+	resize = str(resize).split("'")[1]
+	if resize=="interpolation":
+		resize = lambda img, w, h: tf.image.resize(img, [w, h])
+	elif resize=="zeropadding":
+		resize = lambda img, w, h: tf.image.resize_with_pad(img, w, h)
+	x = resize(img, w, h)
+	
+	y = 0
+	for lb in label_names:
+		if str(lb)[0] == "b":
+			lb = str(lb).split("'")[1]
+		if str(file_path).split("/")[-2] == lb:
+			break
+		y += 1
 	return x, y
 
-def loadImagesGen(file_paths, rand=True, h=512, w=512):
-	if rand:
-		np.random.shuffle(file_paths)
+def loadImagesGen(file_paths, label_names, h, w, resize):
 	for file_path in file_paths:
-		yield getImageLabel(file_path, h, w)
+		yield getImageLabel(file_path, label_names, h, w, resize)
 
-def customDataset(directory, rand=True, batch_size=32, h=512, w=512):
+def customDataset(directory, rand=True, validation_split=0, label_names=None, batch_size=32, h=512, w=512, resize="interpolation"):
 	file_paths = getFilePaths(directory)
-	base_dtype = next(loadImagesGen(file_paths, False, h, w))[0].dtype
-	return tf.data.Dataset.from_generator(loadImagesGen, args=(file_paths, rand, h, w), output_types=base_dtype).batch(batch_size)
+	if rand:
+		shuffle(file_paths)
+
+	val = None	
+	if validation_split >= 0:
+		size_val = int(validation_split*len(file_paths))
+		val_file_paths = file_paths[:size_val]
+		file_paths = file_paths[size_val:]
+		val = tf.data.Dataset.from_generator(loadImagesGen, args=(val_file_paths, label_names, h, w, resize), output_signature=(tf.TensorSpec(shape=(h, w, 3), dtype=tf.int32), tf.TensorSpec(shape=(), dtype=tf.int32))).batch(batch_size)
+	
+	if label_names==None:
+		label_names = getLabelsNames(directory)
+	return tf.data.Dataset.from_generator(loadImagesGen, args=(file_paths, label_names, h, w, resize), output_signature=(tf.TensorSpec(shape=(h, w, 3), dtype=tf.int32), tf.TensorSpec(shape=(), dtype=tf.int32))).batch(batch_size), val
+
